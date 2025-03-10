@@ -7,7 +7,7 @@ using UnityEngine;
 public class TrackGenerator : MonoBehaviour
 {
     private GameObject[] trackPoints;
-    [Range(5, 10)][SerializeField] private int trackPointNo;
+    [Range(5, 20)][SerializeField] private int trackPointNo;
     private GameObject trackPointObj;
     [Range(1, 10)][SerializeField] private float centreSpaceDist;
     [Range(10, 100)][SerializeField] private float borderSpaceDist;
@@ -15,11 +15,13 @@ public class TrackGenerator : MonoBehaviour
     private Transform firstPoint;
     private Transform currentPoint;
 
-    [SerializeField]private HashSet<Transform> track;
+    [SerializeField] private HashSet<Transform> track;
+
+    public List<Transform> collinearPoints;
 
     private void Start()
     {
-        
+
     }
     private void Update()
     {
@@ -51,23 +53,26 @@ public class TrackGenerator : MonoBehaviour
             //Debug.Log($"Loop .{i}.");
         }
         GameObject.Destroy(trackPointObj);
+        ConvexHullGenerator();
     }
     private Vector3 RandomPlacementPos()
     {
         Vector3 rndPos = new Vector3();
-        float rndX = Random.Range(-5.00f, 5.00f);
-        float rndZ = Random.Range(-5.00f, 5.00f);
+        float rndX = Random.Range(-50.00f, 50.00f);
+        float rndZ = Random.Range(-50.00f, 50.00f);
         rndPos = new Vector3(rndX, 1, rndZ);
         return rndPos;
     }
     private void ClearTrack()
     {
-        for (int i = 0; i < trackPoints.Length; i++)
+        if (trackPoints != null)
+            Debug.Log("clear yes");
         {
-            Destroy(trackPoints[i].gameObject);
-
-
-            trackPoints = null;
+            for (int i = 0; i < trackPoints.Length; i++)
+            {
+                Destroy(trackPoints[i].gameObject);
+                trackPoints = null;
+            }
         }
     }
 
@@ -84,46 +89,42 @@ public class TrackGenerator : MonoBehaviour
         }
 
         //List of points to connect
-        
-        List<Transform> collinearPoints = new List<Transform>();
 
         Transform current = trackPoints[leftMostIndex].transform;
 
-        while (true)
+        Debug.Log("kill me??");
+        Transform nextTarget = trackPoints[0].transform;
+
+        for (int i = 1; i < trackPoints.Length; i++)
         {
-            Debug.Log("whieloop??");
-            Transform nextTarget = trackPoints[0].transform;
+            if (trackPoints[i] == current)
+                continue;
 
-            for (int i = 1; i < trackPoints.Length; i++)
+            float x1, x2, y1, y2;
+            x1 = current.position.x - nextTarget.position.x;
+            x2 = current.position.x - trackPoints[i].transform.position.x;
+
+            y1 = current.position.y - nextTarget.position.y;
+            y2 = current.position.y - trackPoints[i].transform.position.y;
+            float val = (y2 * x1) - (y1 * x2);
+
+            if (val > 0)
             {
-                if (trackPoints[i] == current)
-                    continue;
-
-                float x1, x2, y1, y2;
-                x1 = current.position.x - nextTarget.position.x;
-                x2 = current.position.x - trackPoints[i].transform.position.x;
-
-                y1 = current.position.y - nextTarget.position.y;
-                y2 = current.position.y - trackPoints[i].transform.position.y;
-                float val = (y2 * x1) - (y1 * x2);
-
-                if (val > 0)
-                {
-                    nextTarget = trackPoints[i].transform;
-                    collinearPoints = new List<Transform>();
-                }
-
-                else if (val == 0)
-                {
-                    if (Vector2.Distance(current.position, nextTarget.position) < Vector2.Distance(current.position, trackPoints[i].transform.position))
-                    {
-                        collinearPoints.Add(nextTarget);
-                        nextTarget = trackPoints[i].transform;
-                    }
-                    else
-                        collinearPoints.Add(trackPoints[i].transform);
-                }
+                nextTarget = trackPoints[i].transform;
+                collinearPoints = new List<Transform>();
             }
+
+            else if (val == 0)
+            {
+                if (Vector2.Distance(current.position, nextTarget.position) < Vector2.Distance(current.position, trackPoints[i].transform.position))
+                {
+                    collinearPoints.Add(nextTarget);
+                    nextTarget = trackPoints[i].transform;
+                }
+                else
+                    collinearPoints.Add(trackPoints[i].transform);
+            }
+
 
             foreach (Transform t in collinearPoints)
                 track.Add(t);
