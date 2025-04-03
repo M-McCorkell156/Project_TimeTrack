@@ -8,11 +8,16 @@ using Unity.Burst.Intrinsics;
 using UnityEngine.Splines;
 using Unity.Mathematics;
 using Random = UnityEngine.Random;
+using UnityEditor.ShaderGraph;
+using System;
+using System.Collections;
 
 public class TrackGenerator : MonoBehaviour
 {
     #region Variables
     public GameObject[] trackPoints;
+    private Vector3[] trackPositions;
+
     [Range(5, 20)][SerializeField] private int trackPointNo;
     public GameObject trackPointObj;
     [Range(1, 10)][SerializeField] private float centreSpaceDist;
@@ -34,8 +39,18 @@ public class TrackGenerator : MonoBehaviour
     [SerializeField] private GameObject trackSplineObj;
     private SplineContainer trackSplineContainer;
     private Spline splineTrack;
+    private Spline fakeTrack;
 
-    private BezierKnot startKnot;
+    private BezierKnot newKnot;
+    private List<BezierKnot> knots;
+    private Quaternion knotRotation;
+
+    [SerializeField] private Mesh roadMesh;
+    [SerializeField] private MeshFilter roadMeshFilter;
+    private float meshWdith = 1.5f;
+
+
+
     #endregion
 
     #region Basic Methods
@@ -58,13 +73,19 @@ public class TrackGenerator : MonoBehaviour
     #region GeneratePoints
     private void GeneratePoints()
     {
+
         trackPoints = new GameObject[trackPointNo];
+        trackPositions = new Vector3[trackPointNo];
+
         //trackPointObj = PointPrefab; // TODO: poissibly not needed
 
         for (int i = 0; i < trackPointNo; i++)
         {
+            Vector3 rndPointPos = RandomPlacementPos(i);
 
-            Vector3 rndPointPos = RandomPlacementPos();
+            trackPositions[i] = rndPointPos;
+
+            //Debug.Log("yes not in range");
 
             trackPointObj = Instantiate(PointPrefab, rndPointPos, Quaternion.identity);
             //trackPointObj.AddComponent<DestroySelf>();
@@ -83,13 +104,47 @@ public class TrackGenerator : MonoBehaviour
     }
     #endregion
 
-    #region RandomPlacementPos
-    private Vector3 RandomPlacementPos()
+    private bool CheckRndPosDistanceFar(Vector3 rndPosIs)
     {
+
+        for (int i = 0; i < trackPointNo; i++)
+        {
+            if (Vector3.Distance(rndPosIs, trackPositions[i]) > 20)
+            {
+                //Debug.Log($"far{Vector3.Distance(rndPosIs, trackPositions[i])}");
+                i++;
+            }
+            else
+            {
+                //Debug.Log($"close{Vector3.Distance(rndPosIs, trackPositions[i])}");
+                return false;
+            }
+        }
+
+        //Debug.Log("good");
+        return true;
+    }
+
+    #region RandomPlacementPos
+    private Vector3 RandomPlacementPos(int i)
+    {
+        //Debug.Log("rndplace");
+
         Vector3 rndPos = new Vector3();
         float rndX = Random.Range(0.00f, 100.00f);
         float rndZ = Random.Range(0.00f, 100.00f);
         rndPos = new Vector3(rndX, 1, rndZ);
+
+        if (CheckRndPosDistanceFar(rndPos))
+        {
+            //Debug.Log("add to list");
+            trackPositions[i] = rndPos;
+        }
+        else
+        {
+            rndPos = RandomPlacementPos(i);
+        }
+
         return rndPos;
     }
 
@@ -106,10 +161,11 @@ public class TrackGenerator : MonoBehaviour
 
         trackPoints = null;
 
-        Debug.Log("clear list");
+        //Debug.Log("clear list");
         collinearPoints.Clear();
 
         trackSplineContainer.RemoveSpline(splineTrack);
+        //trackSplineContainer.RemoveSpline(fakeTrack);
 
         if (DestroyObjs != null)
         {
@@ -117,14 +173,13 @@ public class TrackGenerator : MonoBehaviour
         }
     }
 
-    #endregion 
+    #endregion
 
     #region ConvexHullGenerator
     private void ConvexHullGenerator()
     {
         SplineInfoSetter();
 
-        track = new HashSet<Transform>();
         int leftMostIndex = 0;
 
         //find left most point
@@ -133,6 +188,8 @@ public class TrackGenerator : MonoBehaviour
             if (trackPoints[leftMostIndex].transform.position.x > trackPoints[i].transform.position.x)
             {
                 leftMostIndex = i;
+                //Debug.Log(trackPoints[leftMostIndex].transform.position);
+
             }
         }
 
@@ -141,13 +198,16 @@ public class TrackGenerator : MonoBehaviour
         Transform current = trackPoints[leftMostIndex].transform;
 
 
-        //Debug.Log("kill me??");
+        //Next target pos
         Transform nextTarget = trackPoints[0].transform;
 
         for (int i = 0; i < trackPoints.Length; i++)
         {
             if (trackPoints[i] == current)
+            {
+                Debug.Log($"trackpoint = current {i}");
                 continue;
+            }
 
             float x1, x2, z1, z2;
             x1 = current.position.x - nextTarget.position.x;
@@ -161,40 +221,43 @@ public class TrackGenerator : MonoBehaviour
 
             if (val > 0)
             {
-                //Debug.Log("val > 0");
+                //Debug.Log("val > 0 - new list");
                 nextTarget = trackPoints[i].transform;
                 collinearPoints = new List<Transform>();
             }
 
             else if (val == 0)
             {
-                //Debug.Log("val = 0");
+                //Debug.Log("val = 0 - add target");
                 if (Vector2.Distance(current.position, nextTarget.position) < Vector2.Distance(current.position, trackPoints[i].transform.position))
                 {
                     collinearPoints.Add(nextTarget);
                     nextTarget = trackPoints[i].transform;
+
                 }
-                else
-                    collinearPoints.Add(trackPoints[i].transform);
+                //else
+                //    collinearPoints.Add(trackPoints[i].transform);
             }
 
-
-            foreach (Transform t in collinearPoints)
-                track.Add(t);
-
-
-            track.Add(nextTarget);
             current = nextTarget;
             //Debug.Log(nextTarget);
 
-            SplineKnotAdd(nextTarget);
 
             if (nextTarget == trackPoints[leftMostIndex])
                 break;
 
         }
 
+        for (int i = 1; i < collinearPoints.Count; i++)
+        {
+            SplineKnotAdd(collinearPoints[i].transform);
+        }
+
+
+        SplineKnotCuvre();
+
     }
+
 
     #endregion
 
@@ -203,13 +266,66 @@ public class TrackGenerator : MonoBehaviour
         trackSplineContainer = trackSplineObj.GetComponent<SplineContainer>();
         //Debug.Log(knotPoint.position);
         splineTrack = trackSplineContainer.AddSpline();
-        splineTrack.Closed = true; 
+        splineTrack.Closed = true;
+
+        knots = new List<BezierKnot>();
     }
     private void SplineKnotAdd(Transform addPoint)
     {
-        startKnot.Position = addPoint.position;
-        splineTrack.Add(startKnot, TangentMode.AutoSmooth);        
-        //Debug.Log("new knot");
+        newKnot.Position = addPoint.position;
+
+        splineTrack.Closed = true;
+
+        //splineTrack.Add(newKnot, TangentMode.AutoSmooth);
+
+        //Debug.Log(newKnot.Rotation);
+        //knotRotation = newKnot.Rotation;
+
+        knots.Add(newKnot);
+    }
+
+    private void SplineKnotCuvre()
+    {
+        //splineTrack.SetTangentMode(TangentMode.Continuous);
+
+        for (int i = 0; i < knots.Count; i++)
+        {
+            BezierKnot pointyKnot = knots[i];
+
+            //splineTrack.Add(pointyKnot, mode: TangentMode.Mirrored);
+
+            //if (i+1 < knots.Count)
+            //{
+            //    pointyKnot.Rotation = Quaternion.LookRotation(knots[i + 1].Position);
+            //}
+
+            //Debug.Log(pointyKnot.Rotation);
+
+            //trackSplineContainer.RemoveSpline(splineTrack);
+
+            //pointyKnot.TangentIn -= new float3(0f, 0f, 10f);
+            //pointyKnot.TangentOut += new float3(0f, 0f, 10f);
+
+            //Debug.Log(pointyKnot.Rotation);
+            //Debug.Log(newKnot.TangentIn);
+
+            splineTrack.Add(pointyKnot, mode: TangentMode.AutoSmooth);
+            //splineTrack.SetTangentMode(i, mode: TangentMode.Mirrored, BezierTangent.Out);
+            //splineTrack.SetTangentMode(i, mode: TangentMode.Mirrored, BezierTangent.In);
+
+        }
+
+    }
+
+
+    private void GenerateRoadMesh()
+    {
+        roadMeshFilter = GetComponent<MeshFilter>();
+
+        for (int i = 0; i < knots.Count; i++)
+        {
+
+        }
     }
 }
 
