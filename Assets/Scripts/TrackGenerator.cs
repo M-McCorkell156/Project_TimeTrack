@@ -11,17 +11,19 @@ using Random = UnityEngine.Random;
 using UnityEditor.ShaderGraph;
 using System;
 using System.Collections;
+using NUnit.Framework;
 
 public class TrackGenerator : MonoBehaviour
 {
     #region Variables
     public GameObject[] trackPoints;
     private Vector3[] trackPositions;
+    private Vector3 rndPointPos;
 
-    [Range(5, 20)][SerializeField] private int trackPointNo;
+    [UnityEngine.Range(5, 20)][SerializeField] private int trackPointNo;
     public GameObject trackPointObj;
-    [Range(1, 10)][SerializeField] private float centreSpaceDist;
-    [Range(10, 100)][SerializeField] private float borderSpaceDist;
+    [UnityEngine.Range(1, 10)][SerializeField] private float centreSpaceDist;
+    [UnityEngine.Range(10, 100)][SerializeField] private float borderSpaceDist;
 
     private Transform knotPoint;
     private Transform currentPoint;
@@ -32,8 +34,12 @@ public class TrackGenerator : MonoBehaviour
 
     public delegate void EventHandler();
     public static event EventHandler DestroyObjs;
+    public static event EventHandler CarSpawned;
+
 
     [SerializeField] private GameObject PointPrefab;
+    [SerializeField] private GameObject StartPrefab;
+    [SerializeField] private GameObject CarPrefab;
 
 
     [SerializeField] private GameObject trackSplineObj;
@@ -47,7 +53,13 @@ public class TrackGenerator : MonoBehaviour
 
     [SerializeField] private Mesh roadMesh;
     [SerializeField] private MeshFilter roadMeshFilter;
-    private float meshWdith = 1.5f;
+    //private float meshWdith = 1.5f;
+
+    private GameObject plyCar;
+
+    private int currentChkPnt;
+    private int nextChkPnt;
+    private GameObject[] checkPoints;
 
 
 
@@ -81,7 +93,7 @@ public class TrackGenerator : MonoBehaviour
 
         for (int i = 0; i < trackPointNo; i++)
         {
-            Vector3 rndPointPos = RandomPlacementPos(i);
+            rndPointPos = RandomPlacementPos(i);
 
             trackPositions[i] = rndPointPos;
 
@@ -96,6 +108,8 @@ public class TrackGenerator : MonoBehaviour
 
             trackPoints[i] = trackPointObj;
             //Debug.Log($"Loop .{i}.");
+
+            Destroy(trackPointObj);
 
         }
 
@@ -248,14 +262,63 @@ public class TrackGenerator : MonoBehaviour
 
         }
 
+
+        checkPoints = new GameObject[collinearPoints.Count];
+
         for (int i = 1; i < collinearPoints.Count; i++)
         {
             SplineKnotAdd(collinearPoints[i].transform);
+            Vector3 checkPointPos = collinearPoints[i].transform.position;
+            checkPointPos.y = 0;
+            trackPointObj = Instantiate(PointPrefab,checkPointPos, Quaternion.identity);
+            checkPoints[i] = trackPointObj;
+            checkPoints[i].SetActive(false);
         }
 
 
         SplineKnotCuvre();
 
+        //this.AddComponent<MeshCollider>();
+
+        GameObject newStart = Instantiate(StartPrefab, collinearPoints[1].position, Quaternion.identity);
+
+        Vector3 startPoint = newStart.transform.position;
+        startPoint.y = 1;
+
+        //Debug.Log(startPoint);
+        if (plyCar == null)
+        {
+
+            plyCar = Instantiate(CarPrefab, startPoint, Quaternion.identity);
+
+            if (CarSpawned != null)
+            {
+                Debug.Log("call");
+                CarSpawned();
+            }
+        }
+        else
+        {
+            plyCar.transform.position = startPoint;
+        }
+
+
+    }
+
+    private void StartRace()
+    {
+        checkPoints[1].SetActive(true);
+        nextChkPnt = 2;
+        currentChkPnt = 1;
+    }
+
+    private void NextCheckPoint()
+    {
+        checkPoints[currentChkPnt].SetActive(false);
+        nextChkPnt = currentChkPnt + 1;
+
+        checkPoints[nextChkPnt].SetActive(true);
+        currentChkPnt += 1;
     }
 
 
@@ -318,16 +381,10 @@ public class TrackGenerator : MonoBehaviour
     }
 
 
-    private void GenerateRoadMesh()
-    {
-        roadMeshFilter = GetComponent<MeshFilter>();
 
-        for (int i = 0; i < knots.Count; i++)
-        {
-
-        }
-    }
 }
+
+
 
 
 
